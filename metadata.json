@@ -1,0 +1,5 @@
+{
+  "name": "SmartWallet AI",
+  "description": "A comprehensive financial monitoring application with multiple wallets, custom categories, and AI-driven spending insights powered by Gemini.",
+  "requestFramePermissions": []
+}
