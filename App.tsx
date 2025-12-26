@@ -41,7 +41,7 @@ const App: React.FC = () => {
   });
 
   const [isEditingProfile, setIsEditingProfile] = useState(false);
-  const [profileForm, setProfileForm] = useState({ fullName: '', username: '', email: '', phone: '', bio: '' });
+  const [profileForm, setProfileForm] = useState({ fullName: '', username: '', email: '', phone: '', bio: '', password: '' });
   const [newCatForm, setNewCatForm] = useState({ name: '', icon: '📦', color: '#64748b' });
 
   const [aiAdvice, setAiAdvice] = useState<string>('');
@@ -107,7 +107,11 @@ const App: React.FC = () => {
       if (data.length > 0) {
         setCategories(data as Category[]);
       } else {
-        DEFAULT_CATEGORIES.forEach(cat => saveData(currentUser.username, "categories", cat));
+        // Fix: Removed ID to allow addDoc to create new documents, fixing "No document to update" error
+        DEFAULT_CATEGORIES.forEach(cat => {
+          const { id, ...catData } = cat;
+          saveData(currentUser.username, "categories", catData);
+        });
       }
     });
 
@@ -116,7 +120,8 @@ const App: React.FC = () => {
       username: currentUser.username || '',
       email: currentUser.email || '',
       phone: currentUser.phone || '',
-      bio: currentUser.bio || ''
+      bio: currentUser.bio || '',
+      password: ''
     });
 
     return () => {
@@ -165,15 +170,15 @@ const App: React.FC = () => {
         return;
       }
 
-      const newUser: User = {
+      const ZG = {
         username: newUserForm.username.toLowerCase(),
         fullName: newUserForm.fullName,
         password: newUserForm.password,
         joinedDate: new Date().toISOString()
       };
 
-      await setDoc(userRef, newUser);
-      setAllUsers([...allUsers, newUser]);
+      await setDoc(userRef, ZG);
+      setAllUsers([...allUsers, ZG as User]);
       setNewUserForm({ username: '', fullName: '', password: '' });
       alert("Pengguna baru berhasil dibuat!");
     } catch (e) {
@@ -188,8 +193,8 @@ const App: React.FC = () => {
 
   const handleAmountChange = (val: string, setter: (v: any) => void, state: any) => {
     const rawValue = val.replace(/\./g, '');
-    const numValue = parseInt(rawValue) || 0;
-    setter({...state, amount: numValue});
+    const QT = parseInt(rawValue) || 0;
+    setter({...state, amount: QT});
   };
 
   const handleBalanceChange = (val: string, setter: (v: any) => void, state: any) => {
@@ -256,6 +261,8 @@ const App: React.FC = () => {
   const handleUpdateProfile = async () => {
     if (!currentUser) return;
     const isUsernameChanging = profileForm.username !== currentUser.username;
+    
+    // Logic for Username Migration
     if (isUsernameChanging) {
       const confirmChange = confirm("Ganti username akan memindahkan seluruh data Anda ke username baru. Lanjutkan?");
       if (!confirmChange) return;
@@ -263,9 +270,17 @@ const App: React.FC = () => {
         const batch = writeBatch(db);
         const oldId = currentUser.username;
         const newId = profileForm.username;
-        const newUserDoc: User = { ...currentUser, ...profileForm };
+        
+        // Prepare new user doc with potential password update
+        const newUserDoc: User = { 
+          ...currentUser, 
+          ...profileForm,
+          password: profileForm.password || currentUser.password // Use new password if provided, else keep old
+        };
+
         batch.set(doc(db, "users", newId), newUserDoc);
         batch.delete(doc(db, "users", oldId));
+        
         const collectionsToUpdate = ["wallets", "transactions", "categories"];
         for (const collName of collectionsToUpdate) {
           const q = query(collection(db, collName), where("owner", "==", oldId));
@@ -277,21 +292,34 @@ const App: React.FC = () => {
         await batch.commit();
         setCurrentUser(newUserDoc);
         localStorage.setItem('sw_user_session', JSON.stringify(newUserDoc));
-        alert("Profil dan data berhasil dimigrasi!");
+        alert("Profil, data, dan password (jika diubah) berhasil dimigrasi!");
       } catch (e) {
         console.error(e);
         alert("Gagal memperbarui username.");
       }
     } else {
+      // Logic for regular profile update
       try {
         const userRef = doc(db, "users", currentUser.username);
-        await updateDoc(userRef, {
+        const updates: any = {
           fullName: profileForm.fullName,
           email: profileForm.email,
           phone: profileForm.phone,
           bio: profileForm.bio
-        });
-        const updatedUser = { ...currentUser, ...profileForm };
+        };
+
+        // Only update password if user typed something in the field
+        if (profileForm.password) {
+          updates.password = profileForm.password;
+        }
+
+        await updateDoc(userRef, updates);
+        
+        const updatedUser = { 
+          ...currentUser, 
+          ...updates 
+        };
+        
         setCurrentUser(updatedUser);
         localStorage.setItem('sw_user_session', JSON.stringify(updatedUser));
         alert("Profil berhasil diperbarui!");
@@ -301,11 +329,13 @@ const App: React.FC = () => {
       }
     }
     setIsEditingProfile(false);
+    setProfileForm(prev => ({ ...prev, password: '' })); // Reset password field
   };
 
   const addCategory = async () => {
     if (!newCatForm.name || !currentUser) return;
-    await saveData(currentUser.username, "categories", { ...newCatForm, id: `custom-${Date.now()}` });
+    // Fix: Remove manual ID generation so addDoc is used in saveData, creating a unique ID
+    await saveData(currentUser.username, "categories", newCatForm);
     setNewCatForm({ name: '', icon: '📦', color: '#64748b' });
   };
 
@@ -465,7 +495,7 @@ const App: React.FC = () => {
                      <th className="px-8 py-5 text-[10px] font-black uppercase text-slate-400 tracking-widest">Username</th>
                      <th className="px-8 py-5 text-[10px] font-black uppercase text-slate-400 tracking-widest">Nama Lengkap</th>
                      <th className="px-8 py-5 text-[10px] font-black uppercase text-slate-400 tracking-widest">Joined Date</th>
-                     <th className="px-8 py-5 text-[10px] font-black uppercase text-slate-400 tracking-widest">Pass (Admin View)</th>
+                     <th className="px-8 py-5 text-[10px] font-black uppercase text-slate-400 tracking-widest">Pass (Hidden)</th>
                    </tr>
                  </thead>
                  <tbody className="divide-y divide-slate-50">
@@ -474,7 +504,7 @@ const App: React.FC = () => {
                        <td className="px-8 py-5 text-sm font-black text-amber-600">@{user.username}</td>
                        <td className="px-8 py-5 text-sm font-bold text-slate-700">{user.fullName}</td>
                        <td className="px-8 py-5 text-xs text-slate-400 font-medium">{new Date(user.joinedDate).toLocaleDateString()}</td>
-                       <td className="px-8 py-5 text-xs font-mono text-slate-400">{user.username === 'admin' ? '******' : user.password}</td>
+                       <td className="px-8 py-5 text-xs font-mono text-slate-400">••••••</td>
                      </tr>
                    ))}
                  </tbody>
@@ -588,6 +618,17 @@ const App: React.FC = () => {
                <div>
                  <label className="text-[10px] font-black uppercase text-slate-400 ml-1 mb-2 block">Nomor HP</label>
                  <input type="text" disabled={!isEditingProfile} value={profileForm.phone} onChange={e => setProfileForm({...profileForm, phone: e.target.value})} placeholder="+62 8..." className={`w-full px-6 py-4 rounded-2xl font-bold border-2 transition-all outline-none ${isEditingProfile ? 'border-emerald-500/20 bg-white focus:border-emerald-500 shadow-inner' : 'border-slate-50 bg-slate-50 text-slate-700'}`} />
+               </div>
+               <div>
+                 <label className="text-[10px] font-black uppercase text-slate-400 ml-1 mb-2 block">Password Baru</label>
+                 <input 
+                   type="password" 
+                   disabled={!isEditingProfile} 
+                   value={profileForm.password} 
+                   onChange={e => setProfileForm({...profileForm, password: e.target.value})} 
+                   placeholder="Biarkan kosong jika tidak diganti" 
+                   className={`w-full px-6 py-4 rounded-2xl font-bold border-2 transition-all outline-none ${isEditingProfile ? 'border-amber-500/20 bg-white focus:border-amber-500 shadow-inner' : 'border-slate-50 bg-slate-50 text-slate-700'}`} 
+                 />
                </div>
                <div className="md:col-span-2">
                  <label className="text-[10px] font-black uppercase text-slate-400 ml-1 mb-2 block">Biografi Keuangan</label>
